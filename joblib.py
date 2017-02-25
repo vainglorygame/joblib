@@ -47,7 +47,7 @@ class JobQueue(object):
                             SELECT id, payload
                             FROM jobs WHERE
                             type=$1 AND status='open'
-                            ORDER BY priority ASC
+                            ORDER BY priority DESC
                         """, jobtype)
                         if result is None:
                             # no jobs available
