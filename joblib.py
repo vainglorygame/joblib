@@ -36,15 +36,15 @@ class JobQueue(object):
             """, jobtype, json.dumps(payload), priority)
 
     async def acquire(self, jobtype):
-        """Mark a job as running, return payload and return id.
-        Return (None, None) if no job is available."""
+        """Mark a job as running, return id, payload and priority.
+        Return (None, None, None) if no job is available."""
         async with self._pool.acquire() as con:
             while True:
                 try:
                     # do not allow async access
                     async with con.transaction(isolation="serializable"):
                         result = await con.fetchrow("""
-                            SELECT id, payload
+                            SELECT id, payload, priority
                             FROM jobs WHERE
                             type=$1 AND status='open'
                             ORDER BY priority DESC
@@ -52,13 +52,13 @@ class JobQueue(object):
                         if result is None:
                             # no jobs available
                             return None, None
-                        jobid, payload = result
+                        jobid, payload, priority = result
                         await con.execute("""
                             UPDATE jobs
                             SET status='running'
                             WHERE id=$1
                         """, jobid)
-                        return jobid, json.loads(payload)
+                        return jobid, json.loads(payload), priority
                 except asyncpg.exceptions.SerializationError:
                     # job is being picked up by another worker, try again
                     pass
