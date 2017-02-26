@@ -2,6 +2,7 @@
 
 import os
 import asyncio
+import json
 import asyncpg
 import pytest
 import joblib
@@ -62,6 +63,19 @@ class TestJoblib:
     async def test_priority(self, queue, payload):
         await queue.request(jobtype="testing", payload=payload, priority=9)
         assert 9 == (await queue.acquire(jobtype="testing"))[2]
+
+    @pytest.mark.asyncio
+    async def test_fail(self, queue, payload):
+        err = "testing errors"
+        await queue.request(jobtype="testing", payload=payload)
+        jobid, _, _ = await queue.acquire(jobtype="testing")
+        await queue.fail(jobid, err)
+        async with queue._pool.acquire() as con:
+            jid, pl = await con.fetchrow(
+                "SELECT id, payload FROM jobs WHERE status='failed'")
+            assert jid == jobid
+            payload["error"] = err
+            assert json.loads(pl) == payload
 
     @pytest.mark.asyncio
     async def test_finish(self, queue, payload):
