@@ -78,6 +78,21 @@ class JobQueue(object):
                 except asyncpg.exceptions.SerializationError:
                     pass
 
+    async def fail(self, jobid, reason):
+        """Mark a job as failed."""
+        async with self._pool.acquire() as con:
+            while True:
+                try:
+                    async with con.transaction(isolation="serializable"):
+                        await con.execute("""
+                            UPDATE jobs
+                            SET status='failed', payload=payload||$2::jsonb
+                            WHERE id=$1
+                        """, jobid, json.dumps({"error": reason}))
+                        return
+                except asyncpg.exceptions.SerializationError:
+                    pass
+
     async def cleanup(self):
         """Reopen all unfinished jobs."""
         async with self._pool.acquire() as con:
