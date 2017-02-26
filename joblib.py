@@ -51,7 +51,7 @@ class JobQueue(object):
                         """, jobtype)
                         if result is None:
                             # no jobs available
-                            return None, None
+                            return None, None, None
                         jobid, payload, priority = result
                         await con.execute("""
                             UPDATE jobs
