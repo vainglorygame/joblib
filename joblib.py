@@ -3,6 +3,7 @@
 import asyncio
 import asyncpg
 import json
+import logging
 
 
 class JobQueue(object):
@@ -11,7 +12,19 @@ class JobQueue(object):
 
     async def connect(self, **args):
         """Connect the database."""
-        self._pool = await asyncpg.create_pool(**args)
+        logging.info("connecting to queue database")
+        while True:
+            try:
+                self._pool = await asyncpg.create_pool(**args)
+                break
+            except asyncpg.exceptions.CannotConnectNowError:
+                logging.warning(
+                    "queue database is not ready yet, retrying")
+                await asyncio.sleep(1)
+            except asyncpg.exceptions.TooManyConnectionsError:
+                logging.warning(
+                    "queue database has too many clients, retrying")
+                await asyncio.sleep(1)
 
     async def setup(self):
         """Initialize the database."""
