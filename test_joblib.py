@@ -78,6 +78,17 @@ class TestJoblib:
             assert json.loads(pl) == payload
 
     @pytest.mark.asyncio
+    async def test_status(self, queue, payload):
+        assert await queue.status(-1) == None
+        jobid = await queue.request(jobtype="testing",
+                                    payload=payload)
+        assert await queue.status(jobid) == "open"
+        await queue.acquire(jobtype="testing")
+        assert await queue.status(jobid) == "running"
+        await queue.finish(jobid)
+        assert await queue.status(jobid) == "finished"
+
+    @pytest.mark.asyncio
     async def test_finish(self, queue, payload):
         await queue.request(jobtype="testing", payload=payload)
         jobid, _, _ = await queue.acquire(jobtype="testing")

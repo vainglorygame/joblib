@@ -28,11 +28,12 @@ class JobQueue(object):
                 """)
 
     async def request(self, jobtype, payload, priority=0):
-        """Create a new job."""
+        """Create a new job and return its id."""
         async with self._pool.acquire() as con:
-            await con.execute("""
+            return await con.fetchval("""
                 INSERT INTO jobs(type, payload, priority)
                 VALUES($1, $2, $3)
+                RETURNING id
             """, jobtype, json.dumps(payload), priority)
 
     async def acquire(self, jobtype):
@@ -62,6 +63,15 @@ class JobQueue(object):
                 except asyncpg.exceptions.SerializationError:
                     # job is being picked up by another worker, try again
                     pass
+    
+    async def status(self, jobid):
+        """Return the status of a job."""
+        async with self._pool.acquire() as con:
+            return await con.fetchval("""
+                SELECT status
+                FROM jobs WHERE
+                id=$1
+            """, jobid)
 
     async def finish(self, jobid):
         """Mark a job as completed."""
