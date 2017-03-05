@@ -72,6 +72,7 @@ class JobQueue(object):
                             FROM jobs WHERE
                             type=$1 AND status='open'
                             ORDER BY priority DESC
+                            LIMIT 1
                         """, jobtype)
                         if result is None:
                             # no jobs available
