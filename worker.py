@@ -51,7 +51,7 @@ class Worker(object):
             error = None
             for jobid, payload, priority in jobs:
                 try:
-                    self._execute_job(jobid, payload, priority)
+                    await self._execute_job(jobid, payload, priority)
                 except JobFailed as err:
                     error = err.args[0]
                 finally:
