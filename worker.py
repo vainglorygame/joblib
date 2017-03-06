@@ -48,6 +48,7 @@ class Worker(object):
                 # nothing to do
                 continue
 
+            error = None
             for jobid, payload, priority in jobs:
                 try:
                     self._execute_job(jobid, payload, priority)
