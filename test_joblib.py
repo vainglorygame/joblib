@@ -59,6 +59,15 @@ class TestJoblib:
         assert None == (await queue.acquire(jobtype="testing"))[1]
 
     @pytest.mark.asyncio
+    async def test_request_and_acquire_batch_batched(self, queue, payload):
+        # request should succeed
+        await queue.request(jobtype="testing", payload=[payload]*5)
+        # acquire should return same payload
+        assert payload == (await queue.acquire(jobtype="testing", length=5))[0][1]
+        # there should not be another job
+        assert None == (await queue.acquire(jobtype="testing"))[1]
+
+    @pytest.mark.asyncio
     async def test_cleanup(self, queue, payload):
         await queue.request(jobtype="testing", payload=payload)
         # mark job as processing

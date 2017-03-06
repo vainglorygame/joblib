@@ -36,48 +36,32 @@ class Worker(object):
         # override
         pass
 
-    async def _work(self):
-        """Fetch a job and run it.
-        Return id."""
-        jobid, payload, priority = await self._queue.acquire(
-            jobtype=self._jobtype)
-        if jobid is None:
-            raise LookupError
-        try:
-            await self._execute_job(jobid, payload, priority)
-        except JobFailed as err:
-            raise JobFailed(err.args[0], jobid)
-        return jobid
-
     async def run(self, batchlimit=1):
         """Start jobs forever."""
         while True:
             await self._windup()
-            jobids = []
-            error = None
-            low_load = False
-            try:
-                for _ in range(batchlimit):
-                    try:
-                        jobids.append(await self._work())
-                    except LookupError:
-                        low_load = True
-                        break
-                    except JobFailed as err:
-                        error = err.args[0]
-                        jobids.append(err.args[1])
-                        break
-            finally:
-                if error is not None:
-                    await self._queue.reset(jobids[:-1])
-                    logging.debug(jobids)
-                    await self._queue.fail(jobids[-1], error)
-                    logging.warning("batch failed, reset")
-                else:
-                    await self._queue.finish(jobids)
-                await self._teardown(failed=error is not None)
-            if low_load:
+            jobs = await self._queue.acquire(jobtype=self._jobtype,
+                                       length=batchlimit)
+
+            if len(jobs) == 0:
                 await asyncio.sleep(0.1)
+                # nothing to do
+                continue
+
+            for jobid, payload, priority in jobs:
+                try:
+                    self._execute_job(jobid, payload, priority)
+                except JobFailed as err:
+                    error = err.args[0]
+                finally:
+                    if error is not None:
+                        await self._queue.reset([j[0] for j in jobs])
+                        await self._queue.fail(jobid, error)
+                        logging.warning("batch failed, reset")
+                        await self._teardown(failed=True)
+                    else:
+                        await self._queue.finish([j[0] for j in jobs])
+                        await self._teardown(failed=False)
 
     async def start(self, batchlimit=1):
         """Start in background."""

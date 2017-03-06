@@ -59,33 +59,47 @@ class JobQueue(object):
             else:
                 return ids[0]
 
-    async def acquire(self, jobtype):
+    async def acquire(self, jobtype, length=None):
         """Mark a job as running, return id, payload and priority.
         Return (None, None, None) if no job is available."""
         async with self._pool.acquire() as con:
+            if length is None:
+                limit = 1
+            else:
+                limit = length
             while True:
                 try:
                     # do not allow async access
                     async with con.transaction(isolation="serializable"):
-                        result = await con.fetchrow("""
-                            SELECT id, payload, priority
-                            FROM jobs WHERE
-                            type=$1 AND status='open'
-                            ORDER BY priority DESC
-                            LIMIT 1
-                        """, jobtype)
-                        if result is None:
+                        result = await con.fetch("""
+                            UPDATE jobs SET STATUS='running'
+                            FROM (
+                                SELECT id FROM jobs
+                                WHERE status='open' AND type=$1
+                                ORDER BY PRIORITY
+                                LIMIT $2
+                            ) AS open_jobs
+                            WHERE jobs.id=open_jobs.id
+                            RETURNING jobs.id, jobs.payload, jobs.priority
+                        """, jobtype, limit)
+                        if len(result) == 0 and length is None:
                             # no jobs available
+                            # backwards compatibility
                             return None, None, None
-                        jobid, payload, priority = result
-                        await con.execute("""
-                            UPDATE jobs
-                            SET status='running'
-                            WHERE id=$1
-                        """, jobid)
-                        return jobid, json.loads(payload), priority
+
+                        jobs = []
+                        for record in result:
+                            jobs.append((record[0],
+                                         json.loads(record[1]),
+                                         record[2]))
+
+                        if length is None:
+                            return jobs[0]
+                        else:
+                            return jobs
                 except asyncpg.exceptions.SerializationError:
                     # job is being picked up by another worker, try again
+                    print("serialization error")
                     pass
 
     async def status(self, jobid):
