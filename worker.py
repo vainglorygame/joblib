@@ -49,20 +49,20 @@ class Worker(object):
                 continue
 
             error = None
-            for jobid, payload, priority in jobs:
-                try:
+            try:
+                for jobid, payload, priority in jobs:
                     await self._execute_job(jobid, payload, priority)
-                except JobFailed as err:
-                    error = err.args[0]
-                finally:
-                    if error is not None:
-                        await self._queue.reset([j[0] for j in jobs])
-                        await self._queue.fail(jobid, error)
-                        logging.warning("batch failed, reset")
-                        await self._teardown(failed=True)
-                    else:
-                        await self._queue.finish([j[0] for j in jobs])
-                        await self._teardown(failed=False)
+            except JobFailed as err:
+                error = err.args[0]
+            finally:
+                if error is not None:
+                    await self._queue.reset([j[0] for j in jobs])
+                    await self._queue.fail(jobid, error)
+                    logging.warning("batch failed, reset")
+                    await self._teardown(failed=True)
+                else:
+                    await self._queue.finish([j[0] for j in jobs])
+                    await self._teardown(failed=False)
 
     async def start(self, batchlimit=1):
         """Start in background."""
