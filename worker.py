@@ -39,7 +39,6 @@ class Worker(object):
     async def run(self, batchlimit=1):
         """Start jobs forever."""
         while True:
-            await self._windup()
             jobs = await self._queue.acquire(jobtype=self._jobtype,
                                        length=batchlimit)
 
@@ -48,6 +47,7 @@ class Worker(object):
                 # nothing to do
                 continue
 
+            await self._windup()
             error = None
             try:
                 for jobid, payload, priority in jobs:
