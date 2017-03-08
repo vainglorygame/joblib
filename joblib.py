@@ -52,12 +52,12 @@ class JobQueue(object):
             else:
                 priorities = [priority] * len(payloads)
             ids = []
-            for pl in payloads:
+            for pl, pr in zip(payloads, priorities):
                 ids.append(await con.fetchval("""
                     INSERT INTO jobs(type, payload, priority)
                     VALUES($1, $2, $3)
                     RETURNING id
-                """, jobtype, json.dumps(pl), priorities))
+                """, jobtype, json.dumps(pl), pr))
             if isinstance(payload, list):
                 return ids
             else:
