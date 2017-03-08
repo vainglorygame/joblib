@@ -15,7 +15,8 @@ class JobQueue(object):
         logging.info("connecting to queue database")
         while True:
             try:
-                self._pool = await asyncpg.create_pool(**args)
+                self._pool = await asyncpg.create_pool(
+                    min_size=1, **args)
                 break
             except asyncpg.exceptions.CannotConnectNowError:
                 logging.warning(
