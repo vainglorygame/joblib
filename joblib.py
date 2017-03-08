@@ -80,7 +80,7 @@ class JobQueue(object):
                             FROM (
                                 SELECT id FROM jobs
                                 WHERE status='open' AND type=$1
-                                ORDER BY priority ASC
+                                ORDER BY priority, id
                                 LIMIT $2
                             ) AS open_jobs
                             WHERE jobs.id=open_jobs.id
