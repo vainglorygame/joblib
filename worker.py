@@ -48,7 +48,7 @@ class Worker(object):
                 continue
 
             await self._windup()
-            critical_error = True
+            critical_error = False
             failed = []
             for jobid, payload, priority in jobs:
                 try:
@@ -60,6 +60,8 @@ class Worker(object):
                         critical_error = err.args[1]
                         if critical_error:
                             break
+                    else:
+                        critical_error = True  # default
             if critical_error:
                 await self._queue.reset([j[0] for j in jobs])
                 logging.warning("batch failed, reset")
