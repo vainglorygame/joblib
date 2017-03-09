@@ -48,21 +48,28 @@ class Worker(object):
                 continue
 
             await self._windup()
-            error = None
-            try:
-                for jobid, payload, priority in jobs:
+            critical_error = True
+            failed = []
+            for jobid, payload, priority in jobs:
+                try:
                     await self._execute_job(jobid, payload, priority)
-            except JobFailed as err:
-                error = err.args[0]
-            finally:
-                if error is not None:
-                    await self._queue.reset([j[0] for j in jobs])
-                    await self._queue.fail(jobid, error)
-                    logging.warning("batch failed, reset")
-                    await self._teardown(failed=True)
-                else:
-                    await self._queue.finish([j[0] for j in jobs])
-                    await self._teardown(failed=False)
+                except JobFailed as err:
+                    failed.append((jobid, err.args[0]))
+                    if len(err.args) > 1:
+                        # rollback
+                        critical_error = err.args[1]
+                        if critical_error:
+                            break
+            if critical_error:
+                await self._queue.reset([j[0] for j in jobs])
+                logging.warning("batch failed, reset")
+            else:
+                await self._queue.finish([j[0] for j in jobs])
+
+            for jobid, err in failed:
+                await self._queue.fail(jobid, err)
+
+            await self._teardown(failed=critical_error)
 
     async def start(self, batchlimit=1):
         """Start in background."""
