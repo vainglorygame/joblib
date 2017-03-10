@@ -33,7 +33,7 @@ class JobQueue(object):
             await con.execute("""
                 CREATE TABLE IF NOT EXISTS
                 jobs (
-                    id SERIAL,
+                    id SERIAL PRIMARY KEY,
                     priority INT DEFAULT 0,
                     status TEXT DEFAULT 'open',
                     type TEXT,
