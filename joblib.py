@@ -108,7 +108,7 @@ class JobQueue(object):
                             return jobs
                 except asyncpg.exceptions.SerializationError:
                     # job is being picked up by another worker, try again
-                    print("serialization error")
+                    logging.debug("serialization error, retrying")
                     pass
 
     async def status(self, jobid):
