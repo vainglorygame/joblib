@@ -44,6 +44,11 @@ class JobQueue(object):
     async def request(self, jobtype, payload, priority=0):
         """Create a new job and return its id."""
         async with self._pool.acquire() as con:
+            insert = await con.prepare("""
+                    INSERT INTO jobs(type, payload, priority)
+                    VALUES($1, $2, $3)
+                    RETURNING id
+            """)
             if isinstance(payload, list):
                 payloads = payload
             else:
@@ -54,11 +59,9 @@ class JobQueue(object):
                 priorities = [priority] * len(payloads)
             ids = []
             for pl, pr in zip(payloads, priorities):
-                ids.append(await con.fetchval("""
-                    INSERT INTO jobs(type, payload, priority)
-                    VALUES($1, $2, $3)
-                    RETURNING id
-                """, jobtype, json.dumps(pl), pr))
+                ids.append(await insert.fetchval(jobtype,
+                                                 json.dumps(pl),
+                                                 pr))
             if isinstance(payload, list):
                 return ids
             else:
@@ -68,6 +71,17 @@ class JobQueue(object):
         """Mark a job as running, return id, payload and priority.
         Return (None, None, None) if no job is available."""
         async with self._pool.acquire() as con:
+            update = await con.prepare("""
+                UPDATE jobs SET STATUS='running'
+                FROM (
+                    SELECT id FROM jobs
+                    WHERE status='open' AND type=$1
+                    ORDER BY priority, id
+                    LIMIT $2
+                ) AS open_jobs
+                WHERE jobs.id=open_jobs.id
+                RETURNING jobs.id, jobs.payload, jobs.priority
+            """)
             if length is None:
                 limit = 1
             else:
@@ -76,17 +90,7 @@ class JobQueue(object):
                 try:
                     # do not allow async access
                     async with con.transaction(isolation="serializable"):
-                        result = await con.fetch("""
-                            UPDATE jobs SET STATUS='running'
-                            FROM (
-                                SELECT id FROM jobs
-                                WHERE status='open' AND type=$1
-                                ORDER BY priority, id
-                                LIMIT $2
-                            ) AS open_jobs
-                            WHERE jobs.id=open_jobs.id
-                            RETURNING jobs.id, jobs.payload, jobs.priority
-                        """, jobtype, limit)
+                        result = await update.fetch(jobtype, limit)
                         if len(result) == 0 and length is None:
                             # no jobs available
                             # backwards compatibility
@@ -104,7 +108,7 @@ class JobQueue(object):
                             return jobs
                 except asyncpg.exceptions.SerializationError:
                     # job is being picked up by another worker, try again
-                    print("serialization error")
+                    logging.debug("serialization error, retrying")
                     pass
 
     async def status(self, jobid):
@@ -133,6 +137,11 @@ class JobQueue(object):
     async def fail(self, jobid, reason):
         """Mark a job as failed."""
         async with self._pool.acquire() as con:
+            update = await con.prepare("""
+                UPDATE jobs
+                SET status='failed', payload=payload||$2::jsonb
+                WHERE id=$1
+            """)
             if not isinstance(jobid, list):
                 jobids = [jobid]
             else:
@@ -143,11 +152,8 @@ class JobQueue(object):
                 reasons = reason
             assert len(jobids) == len(reasons)
             for jid, rsn in zip(jobids, reasons):
-                await con.execute("""
-                    UPDATE jobs
-                    SET status='failed', payload=payload||$2::jsonb
-                    WHERE id=$1
-                """, jid, json.dumps({"error": rsn}))
+                await update.execute(jid,
+                                     json.dumps({"error": rsn}))
 
     async def reset(self, jobid):
         """Mark a job as open."""
