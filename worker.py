@@ -50,9 +50,11 @@ class Worker(object):
             await self._windup()
             critical_error = False
             failed = []
+            succeeded = []
             for jobid, payload, priority in jobs:
                 try:
                     await self._execute_job(jobid, payload, priority)
+                    succeeded.append(jobid)
                 except JobFailed as err:
                     failed.append((jobid, err.args[0]))
                     if len(err.args) > 1:
@@ -63,10 +65,10 @@ class Worker(object):
                     else:
                         critical_error = True  # default
             if critical_error:
-                await self._queue.reset([j[0] for j in jobs])
+                await self._queue.reset(succeeded)
                 logging.warning("batch failed, reset")
             else:
-                await self._queue.finish([j[0] for j in jobs])
+                await self._queue.finish(succeeded)
 
             for jobid, err in failed:
                 await self._queue.fail(jobid, err)
