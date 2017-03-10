@@ -43,7 +43,7 @@ class Worker(object):
                                        length=batchlimit)
 
             if len(jobs) == 0:
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(1)
                 # nothing to do
                 continue
 
