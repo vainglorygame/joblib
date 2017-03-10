@@ -123,16 +123,17 @@ class JobQueue(object):
     async def finish(self, jobid):
         """Mark jobs as completed."""
         async with self._pool.acquire() as con:
+            update = await con.prepare("""
+                UPDATE jobs
+                SET status='finished'
+                WHERE id=$1
+            """)
             if not isinstance(jobid, list):
                 jobids = [jobid]
             else:
                 jobids = jobid
             for jid in jobids:
-                await con.execute("""
-                    UPDATE jobs
-                    SET status='finished'
-                    WHERE id=$1
-                """, jid)
+                await update.fetch(jid)
 
     async def fail(self, jobid, reason):
         """Mark a job as failed."""
