@@ -58,10 +58,11 @@ class JobQueue(object):
             else:
                 priorities = [priority] * len(payloads)
             ids = []
-            for pl, pr in zip(payloads, priorities):
-                ids.append(await insert.fetchval(jobtype,
-                                                 json.dumps(pl),
-                                                 pr))
+            async with con.transaction():
+                for pl, pr in zip(payloads, priorities):
+                    ids.append(await insert.fetchval(jobtype,
+                                                     json.dumps(pl),
+                                                     pr))
             if isinstance(payload, list):
                 return ids
             else:
@@ -132,8 +133,9 @@ class JobQueue(object):
                 jobids = [jobid]
             else:
                 jobids = jobid
-            for jid in jobids:
-                await update.fetch(jid)
+            async with con.transaction():
+                for jid in jobids:
+                    await update.fetch(jid)
 
     async def fail(self, jobid, reason):
         """Mark a job as failed."""
@@ -152,23 +154,26 @@ class JobQueue(object):
             else:
                 reasons = reason
             assert len(jobids) == len(reasons)
-            for jid, rsn in zip(jobids, reasons):
-                await update.fetch(jid,
-                                   json.dumps({"error": rsn}))
+            async with con.transaction():
+                for jid, rsn in zip(jobids, reasons):
+                    await update.fetch(jid,
+                                       json.dumps({"error": rsn}))
 
     async def reset(self, jobid):
         """Mark a job as open."""
         async with self._pool.acquire() as con:
+            update = await con.prepare("""
+                UPDATE jobs
+                SET status='open'
+                WHERE id=$1
+            """)
             if not isinstance(jobid, list):
                 jobids = [jobid]
             else:
                 jobids = jobid
-            for jid in jobids:
-                await con.execute("""
-                    UPDATE jobs
-                    SET status='open'
-                    WHERE id=$1
-                """, jid)
+            async with con.transaction():
+                for jid in jobids:
+                    await update.fetch(jid)
 
     async def cleanup(self):
         """Reopen all unfinished jobs."""
