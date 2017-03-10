@@ -152,8 +152,8 @@ class JobQueue(object):
                 reasons = reason
             assert len(jobids) == len(reasons)
             for jid, rsn in zip(jobids, reasons):
-                await update.execute(jid,
-                                     json.dumps({"error": rsn}))
+                await update.fetch(jid,
+                                   json.dumps({"error": rsn}))
 
     async def reset(self, jobid):
         """Mark a job as open."""
