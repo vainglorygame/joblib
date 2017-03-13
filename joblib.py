@@ -40,6 +40,9 @@ class JobQueue(object):
                     payload JSONB
                 )
                 """)
+            await con.execute("""
+                CREATE UNIQUE INDEX ON jobs(priority, id)
+            """)
 
     async def request(self, jobtype, payload, priority=0):
         """Create a new job and return its id."""
