@@ -102,7 +102,7 @@ class Worker(object):
         """Request a poll after a push or a timer."""
         while True:
             while not self._need_update:
-                await asyncio.sleep(0)
+                await asyncio.sleep(0.01)
             logging.debug("polling")
             self._need_update = False
             await self.poll(batchlimit)
