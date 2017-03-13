@@ -14,9 +14,15 @@ class Worker(object):
     def __init__(self, jobtype):
         self._queue = None
         self._jobtype = jobtype
+        self._need_update = True
+        self._children = []
 
     async def connect(self, **queuedb):
         self._queue = joblib.joblib.JobQueue()
+        # register event handler on new open job
+        await self._queue.listen(
+            self._jobtype + "_open",
+            self._pushed_new)
         await self._queue.connect(**queuedb)
         await self._queue.setup()
 
@@ -36,44 +42,70 @@ class Worker(object):
         # override
         pass
 
-    async def run(self, batchlimit=1):
-        """Start jobs forever."""
+    async def request(self, jobtype, payload, priority=None):
+        """Queue child jobs to be executed after teardown."""
+        self._children.append((jobtype, payload, priority))
+
+    async def poll(self, batchlimit=1):
+        """Start a batch of jobs."""
+        jobs = await self._queue.acquire(jobtype=self._jobtype,
+                                         length=batchlimit)
+
+        if len(jobs) == 0:
+            logging.debug("no jobs")
+            return
+
+        await self._windup()
+        critical_error = False
+        failed = []
+        succeeded = []
+        for jobid, payload, priority in jobs:
+            try:
+                await self._execute_job(jobid, payload, priority)
+                succeeded.append(jobid)
+            except JobFailed as err:
+                failed.append((jobid, err.args[0]))
+                if len(err.args) > 1:
+                    # rollback
+                    critical_error = err.args[1]
+                    if critical_error:
+                        break
+                else:
+                    critical_error = True  # default
+        if critical_error:
+            await self._queue.reset(succeeded,
+                                    self._jobtype)
+            logging.warning("batch failed, reset")
+        else:
+            await self._queue.finish(succeeded,
+                                     self._jobtype)
+
+        for jobid, err in failed:
+            await self._queue.fail(jobid,
+                                   self._jobtype,
+                                   err)
+
+        await self._teardown(failed=critical_error)
+
+        # spawn child jobs
+        for jobt, payloads, priorities in self._children:
+            await self._queue.request(
+                jobt, payloads, priorities)
+        self._children = []
+
+    def _pushed_new(self, _):
+        """New job event handler."""
+        logging.debug("received a notification")
+        self._need_update = True
+
+    async def run(self, batchlimit):
+        """Request a poll after a push or a timer."""
         while True:
-            jobs = await self._queue.acquire(jobtype=self._jobtype,
-                                       length=batchlimit)
-
-            if len(jobs) == 0:
-                await asyncio.sleep(1)
-                # nothing to do
-                continue
-
-            await self._windup()
-            critical_error = False
-            failed = []
-            succeeded = []
-            for jobid, payload, priority in jobs:
-                try:
-                    await self._execute_job(jobid, payload, priority)
-                    succeeded.append(jobid)
-                except JobFailed as err:
-                    failed.append((jobid, err.args[0]))
-                    if len(err.args) > 1:
-                        # rollback
-                        critical_error = err.args[1]
-                        if critical_error:
-                            break
-                    else:
-                        critical_error = True  # default
-            if critical_error:
-                await self._queue.reset(succeeded)
-                logging.warning("batch failed, reset")
-            else:
-                await self._queue.finish(succeeded)
-
-            for jobid, err in failed:
-                await self._queue.fail(jobid, err)
-
-            await self._teardown(failed=critical_error)
+            while not self._need_update:
+                await asyncio.sleep(0)
+            logging.debug("polling")
+            self._need_update = False
+            await self.poll(batchlimit)
 
     async def start(self, batchlimit=1):
         """Start in background."""
