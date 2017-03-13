@@ -53,7 +53,10 @@ class JobQueue(object):
             )
         """)
         await self._con.execute("""
-            CREATE UNIQUE INDEX ON jobs(priority, id)
+            CREATE UNIQUE INDEX
+            IF NOT EXISTS
+            jobs_priority_id_idx
+            ON jobs(priority, id)
         """)
 
     async def listen(self, channel, callback):
