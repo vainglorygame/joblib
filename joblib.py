@@ -82,7 +82,7 @@ class JobQueue(object):
         ids = []
         async with self._con.transaction():
             for pl, pr in zip(payloads, priorities):
-                ids.append(await insert.fetch(jobtype, pl, pr))
+                ids.append(await insert.fetchval(jobtype, pl, pr))
             await self._con.execute("SELECT pg_notify($1 || '_open', '')",
                                     jobtype)
 
