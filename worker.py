@@ -53,6 +53,7 @@ class Worker(object):
 
         if len(jobs) == 0:
             logging.debug("no jobs")
+            self._need_update = False
             return
 
         await self._windup()
@@ -104,7 +105,6 @@ class Worker(object):
             while not self._need_update:
                 await asyncio.sleep(0.01)
             logging.debug("polling")
-            self._need_update = False
             await self.poll(batchlimit)
 
     async def start(self, batchlimit=1):
