@@ -66,6 +66,8 @@ class JobQueue(object):
                     ids.append(await insert.fetchval(jobtype,
                                                      json.dumps(pl),
                                                      pr))
+                await con.execute("SELECT pg_notify($1 || '_open', '')",
+                                  jobtype)
             if isinstance(payload, list):
                 return ids
             else:
